@@ -20,6 +20,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.cudgk.retrovhs.camera.CameraScreen
+import com.cudgk.retrovhs.gallery.GalleryScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -39,16 +40,22 @@ private fun AppNav() {
         composable("home") {
             HomeScreen(
                 onCamera = { nav.navigate("camera") },
+                onGallery = { nav.navigate("gallery") },
                 onLicense = { nav.navigate("license") },
             )
         }
         composable("camera") { CameraScreen(onBack = { nav.popBackStack() }) }
+        composable("gallery") { GalleryScreen(onBack = { nav.popBackStack() }) }
         composable("license") { LicenseScreen(onBack = { nav.popBackStack() }) }
     }
 }
 
 @Composable
-private fun HomeScreen(onCamera: () -> Unit, onLicense: () -> Unit) {
+private fun HomeScreen(
+    onCamera: () -> Unit,
+    onGallery: () -> Unit,
+    onLicense: () -> Unit,
+) {
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -56,9 +63,11 @@ private fun HomeScreen(onCamera: () -> Unit, onLicense: () -> Unit) {
     ) {
         Text("RetroVHS", style = MaterialTheme.typography.headlineLarge)
         Spacer(Modifier.height(8.dp))
-        Text("Phase 1 — camera + shader", style = MaterialTheme.typography.bodyMedium)
+        Text("Phase 2 — camera + gallery", style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(32.dp))
         Button(onClick = onCamera) { Text("カメラを開く") }
+        Spacer(Modifier.height(12.dp))
+        Button(onClick = onGallery) { Text("ギャラリーから選ぶ") }
         Spacer(Modifier.height(12.dp))
         Button(onClick = onLicense) { Text("ライセンス / OSS") }
     }
