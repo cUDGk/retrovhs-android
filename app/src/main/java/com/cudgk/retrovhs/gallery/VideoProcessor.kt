@@ -17,7 +17,9 @@ import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import android.util.Log
 import android.view.Surface
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
  * Decodes a video, applies the VHS shader to each frame via OpenGL,
@@ -66,8 +68,9 @@ private class VideoProcessingPipeline(
     private lateinit var surfaceTexture: SurfaceTexture
     private lateinit var decoderSurface: Surface
 
-    private val frameAvailable = AtomicBoolean(false)
-    private val frameLock = Object()
+    private val frameLock = ReentrantLock()
+    private val frameCond = frameLock.newCondition()
+    @Volatile private var frameReady = false
     private lateinit var frameThread: HandlerThread
 
     private lateinit var muxer: MediaMuxer
@@ -136,9 +139,9 @@ private class VideoProcessingPipeline(
         frameThread = HandlerThread("VhsVideoProc-frame").apply { start() }
         surfaceTexture = SurfaceTexture(oesTexId).apply {
             setOnFrameAvailableListener({
-                synchronized(frameLock) {
-                    frameAvailable.set(true)
-                    (frameLock as Object).notifyAll()
+                frameLock.withLock {
+                    frameReady = true
+                    frameCond.signalAll()
                 }
             }, Handler(frameThread.looper))
         }
@@ -238,14 +241,14 @@ private class VideoProcessingPipeline(
     }
 
     private fun awaitFrameAvailable(timeoutMs: Long) {
-        synchronized(frameLock) {
+        frameLock.withLock {
             val deadline = System.currentTimeMillis() + timeoutMs
-            while (!frameAvailable.get()) {
+            while (!frameReady) {
                 val left = deadline - System.currentTimeMillis()
                 if (left <= 0) error("timed out waiting for frame")
-                (frameLock as Object).wait(left)
+                frameCond.await(left, TimeUnit.MILLISECONDS)
             }
-            frameAvailable.set(false)
+            frameReady = false
         }
     }
 
