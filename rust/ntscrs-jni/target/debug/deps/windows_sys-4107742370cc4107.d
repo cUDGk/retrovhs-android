@@ -1,0 +1,10 @@
+C:\Users\user\Desktop\vhs-android\rust\ntscrs-jni\target\debug\deps\windows_sys-4107742370cc4107.d: C:\Users\user\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-sys-0.45.0\src\lib.rs C:\Users\user\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-sys-0.45.0\src\Windows\mod.rs C:\Users\user\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-sys-0.45.0\src\Windows\Win32\mod.rs C:\Users\user\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-sys-0.45.0\src\Windows\Win32\Globalization\mod.rs C:\Users\user\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-sys-0.45.0\src\core\mod.rs C:\Users\user\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-sys-0.45.0\src\core\literals.rs
+
+C:\Users\user\Desktop\vhs-android\rust\ntscrs-jni\target\debug\deps\libwindows_sys-4107742370cc4107.rmeta: C:\Users\user\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-sys-0.45.0\src\lib.rs C:\Users\user\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-sys-0.45.0\src\Windows\mod.rs C:\Users\user\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-sys-0.45.0\src\Windows\Win32\mod.rs C:\Users\user\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-sys-0.45.0\src\Windows\Win32\Globalization\mod.rs C:\Users\user\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-sys-0.45.0\src\core\mod.rs C:\Users\user\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-sys-0.45.0\src\core\literals.rs
+
+C:\Users\user\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-sys-0.45.0\src\lib.rs:
+C:\Users\user\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-sys-0.45.0\src\Windows\mod.rs:
+C:\Users\user\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-sys-0.45.0\src\Windows\Win32\mod.rs:
+C:\Users\user\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-sys-0.45.0\src\Windows\Win32\Globalization\mod.rs:
+C:\Users\user\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-sys-0.45.0\src\core\mod.rs:
+C:\Users\user\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\windows-sys-0.45.0\src\core\literals.rs:

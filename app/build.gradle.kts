@@ -63,6 +63,51 @@ dependencies {
     implementation("androidx.camera:camera-video:$cameraxVersion")
 
     implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
+
+// --- Rust (ntsc-rs JNI) build integration ---
+
+fun resolveAndroidNdkDir(): File? {
+    val sdkDir = System.getenv("ANDROID_HOME")
+        ?: System.getenv("ANDROID_SDK_ROOT")
+        ?: rootProject.file("local.properties").takeIf { it.exists() }?.let { f ->
+            f.readLines().firstOrNull { it.startsWith("sdk.dir=") }?.substringAfter("=")?.replace("\\:", ":")?.replace("\\\\", "\\")
+        }
+        ?: return null
+    val ndkRoot = File(sdkDir, "ndk")
+    if (!ndkRoot.isDirectory) return null
+    return ndkRoot.listFiles { f -> f.isDirectory }?.toList()?.maxByOrNull { it.name } ?: null
+}
+
+val cargoNdkBuild by tasks.registering(Exec::class) {
+    group = "rust"
+    description = "Build ntscrs-jni for Android architectures via cargo-ndk."
+    val rustDir = rootProject.file("rust/ntscrs-jni")
+    val outDir = file("src/main/jniLibs")
+    workingDir = rustDir
+    inputs.dir(rustDir.resolve("src"))
+    inputs.file(rustDir.resolve("Cargo.toml"))
+    outputs.dir(outDir)
+    val ndk = resolveAndroidNdkDir()
+    if (ndk != null) environment("ANDROID_NDK_HOME", ndk.absolutePath)
+    val isWindows = System.getProperty("os.name").lowercase().contains("windows")
+    val args = listOf(
+        "cargo", "ndk",
+        "-t", "arm64-v8a",
+        "-t", "armeabi-v7a",
+        "-t", "x86_64",
+        "-t", "x86",
+        "-o", outDir.absolutePath,
+        "build", "--release",
+    )
+    commandLine = if (isWindows) listOf("cmd", "/c") + args else args
+    isIgnoreExitValue = false
+    doFirst {
+        if (ndk == null) error("Android NDK not found. Install via SDK Manager or set ANDROID_NDK_HOME.")
+    }
+}
+
+tasks.named("preBuild") { dependsOn(cargoNdkBuild) }

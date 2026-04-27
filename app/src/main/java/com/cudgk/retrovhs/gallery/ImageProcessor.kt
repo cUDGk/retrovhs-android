@@ -9,20 +9,45 @@ import android.opengl.GLES30
 import android.os.Build
 import android.provider.MediaStore
 import com.cudgk.retrovhs.camera.GlUtils
+import com.cudgk.retrovhs.rust.NtscRs
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 object ImageProcessor {
 
     /** Loads, processes, and saves the image. Returns true on success. */
-    fun process(context: Context, source: Uri, intensity: Float, displayName: String): Boolean {
+    fun process(
+        context: Context,
+        source: Uri,
+        intensity: Float,
+        displayName: String,
+        useRust: Boolean = false,
+    ): Boolean {
+        if (useRust) return processWithRust(context, source, intensity, displayName)
+        return processWithShader(context, source, intensity, displayName)
+    }
+
+    private fun processWithRust(context: Context, source: Uri, intensity: Float, displayName: String): Boolean {
+        if (!NtscRs.isAvailable) return false
+        val src = decodeBitmap(context, source, mutable = true) ?: return false
+        return try {
+            NtscRs.process(src, frameNum = 0, intensity = intensity)
+            saveToMediaStore(context, src, displayName)
+        } catch (t: Throwable) {
+            false
+        } finally {
+            src.recycle()
+        }
+    }
+
+    private fun processWithShader(context: Context, source: Uri, intensity: Float, displayName: String): Boolean {
         val srcBitmap = decodeBitmap(context, source) ?: return false
         val w = srcBitmap.width
         val h = srcBitmap.height
 
         val gl = OffscreenGl(width = w, height = h, recordable = false)
         val renderer = Sampler2DRenderer()
-        var processed: Bitmap? = null
+        var processed: Bitmap?
         try {
             renderer.init()
             val texId = renderer.uploadBitmap(srcBitmap)
@@ -45,13 +70,14 @@ object ImageProcessor {
             gl.release()
         }
 
-        val out = processed ?: return false
+        val out = processed
         return saveToMediaStore(context, out, displayName).also { out.recycle() }
     }
 
-    private fun decodeBitmap(context: Context, uri: Uri): Bitmap? {
+    private fun decodeBitmap(context: Context, uri: Uri, mutable: Boolean = false): Bitmap? {
         val opts = BitmapFactory.Options().apply {
             inPreferredConfig = Bitmap.Config.ARGB_8888
+            inMutable = mutable
         }
         return context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
     }

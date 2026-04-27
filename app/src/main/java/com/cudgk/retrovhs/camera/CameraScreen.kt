@@ -54,8 +54,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.cudgk.retrovhs.settings.PresetRow
+import com.cudgk.retrovhs.settings.Presets
+import com.cudgk.retrovhs.settings.Settings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -111,16 +115,30 @@ private fun CameraContent(onBack: () -> Unit) {
     val owner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
 
-    var intensity by remember { mutableFloatStateOf(0.7f) }
-    var fps by remember { mutableIntStateOf(30) }
-    var lens by remember { mutableIntStateOf(CameraSelector.LENS_FACING_BACK) }
+    var intensity by remember { mutableFloatStateOf(Settings.DEFAULT_INTENSITY) }
+    var fps by remember { mutableIntStateOf(Settings.DEFAULT_FPS) }
+    var lens by remember { mutableIntStateOf(Settings.DEFAULT_LENS) }
+    var preset by remember { mutableStateOf<String?>(null) }
     var mode by remember { mutableStateOf(CaptureMode.PHOTO) }
     var recording by remember { mutableStateOf(false) }
     var recordSeconds by remember { mutableIntStateOf(0) }
+    var settingsLoaded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        intensity = Settings.intensity(context).first()
+        fps = Settings.fps(context).first()
+        lens = Settings.lens(context).first()
+        preset = Settings.preset(context).first()
+        settingsLoaded = true
+    }
 
     val controller = remember { CameraController(context) }
     var renderer by remember { mutableStateOf<VhsRenderer?>(null) }
     var cameraSurface by remember { mutableStateOf<Surface?>(null) }
+
+    LaunchedEffect(intensity, renderer) {
+        renderer?.intensity = intensity
+    }
 
     LaunchedEffect(lens, fps, cameraSurface) {
         val s = cameraSurface ?: return@LaunchedEffect
@@ -215,6 +233,19 @@ private fun CameraContent(onBack: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            PresetRow(
+                selected = preset,
+                enabled = !recording,
+                onSelect = { p ->
+                    preset = p.name
+                    intensity = p.intensity
+                    renderer?.intensity = p.intensity
+                    scope.launch { Settings.applyPreset(context, p) }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                onlyEngine = com.cudgk.retrovhs.settings.Engine.SHADER,
+            )
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("強度", color = Color.White, modifier = Modifier.width(48.dp))
                 Slider(
@@ -222,6 +253,13 @@ private fun CameraContent(onBack: () -> Unit) {
                     onValueChange = {
                         intensity = it
                         renderer?.intensity = it
+                        preset = null
+                    },
+                    onValueChangeFinished = {
+                        scope.launch {
+                            Settings.setIntensity(context, intensity)
+                            Settings.setPreset(context, null)
+                        }
                     },
                     valueRange = 0f..1f,
                     modifier = Modifier.fillMaxWidth(),
@@ -236,7 +274,10 @@ private fun CameraContent(onBack: () -> Unit) {
                 FPS_OPTIONS.forEach { v ->
                     AssistChip(
                         enabled = !recording,
-                        onClick = { fps = v },
+                        onClick = {
+                            fps = v
+                            scope.launch { Settings.setFps(context, v) }
+                        },
                         label = { Text("$v") },
                         colors = AssistChipDefaults.assistChipColors(
                             containerColor = if (fps == v) Color.White else Color.DarkGray,
@@ -315,6 +356,7 @@ private fun CameraContent(onBack: () -> Unit) {
                         } else {
                             CameraSelector.LENS_FACING_BACK
                         }
+                        scope.launch { Settings.setLens(context, lens) }
                     },
                 ) {
                     Icon(
