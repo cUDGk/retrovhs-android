@@ -12,3 +12,7 @@ captures/
 *.keystore
 *.jks
 /keystore.properties
+
+# Rust
+/rust/**/target/
+/app/src/main/jniLibs/
