@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.cudgk.retrovhs.i18n.s
 
 private data class OssEntry(
     val name: String,
@@ -33,11 +34,17 @@ private val OSS_ENTRIES = listOf(
         name = "ntsc-rs",
         url = "https://github.com/ntsc-rs/ntsc-rs",
         license = "MIT / Apache-2.0 / ISC",
-        notice = "本アプリのVHS/NTSCエフェクトは ntsc-rs を参考にしている。",
+        notice = "本アプリのVHS/NTSCエフェクトのコアロジック。Copyright (c) ntsc-rs contributors.",
     ),
     OssEntry(
         name = "AndroidX / Jetpack Compose",
         url = "https://developer.android.com/jetpack/androidx",
+        license = "Apache-2.0",
+        notice = "Copyright The Android Open Source Project",
+    ),
+    OssEntry(
+        name = "CameraX",
+        url = "https://developer.android.com/training/camerax",
         license = "Apache-2.0",
         notice = "Copyright The Android Open Source Project",
     ),
@@ -47,6 +54,36 @@ private val OSS_ENTRIES = listOf(
         license = "Apache-2.0",
         notice = "Copyright JetBrains s.r.o. and Kotlin contributors",
     ),
+    OssEntry(
+        name = "Coil",
+        url = "https://github.com/coil-kt/coil",
+        license = "Apache-2.0",
+        notice = "Copyright Coil contributors",
+    ),
+    OssEntry(
+        name = "DataStore",
+        url = "https://developer.android.com/jetpack/androidx/releases/datastore",
+        license = "Apache-2.0",
+        notice = "Copyright The Android Open Source Project",
+    ),
+    OssEntry(
+        name = "jni-rs",
+        url = "https://github.com/jni-rs/jni-rs",
+        license = "MIT / Apache-2.0",
+        notice = "Copyright (c) 2016 Yifan Lyu et al.",
+    ),
+    OssEntry(
+        name = "image-rs",
+        url = "https://github.com/image-rs/image",
+        license = "MIT / Apache-2.0",
+        notice = "Copyright (c) image-rs contributors",
+    ),
+    OssEntry(
+        name = "VCR OSD Mono (font)",
+        url = "https://www.dafont.com/vcr-osd-mono.font",
+        license = "Free for personal/commercial use",
+        notice = "Designed by Riciery Leal",
+    ),
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -55,10 +92,10 @@ fun LicenseScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("ライセンス / OSS") },
+                title = { Text(s("lic_title")) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = s("lic_back"))
                     }
                 },
             )
@@ -73,7 +110,7 @@ fun LicenseScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
-                "本アプリは以下のオープンソースソフトウェアを利用しています。",
+                s("lic_intro"),
                 style = MaterialTheme.typography.bodyMedium,
             )
             OSS_ENTRIES.forEach { entry -> OssCard(entry) }
@@ -86,7 +123,7 @@ fun LicenseScreen(onBack: () -> Unit) {
 private fun OssCard(entry: OssEntry) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(entry.name, style = MaterialTheme.typography.titleMedium)
-        Text("ライセンス: ${entry.license}", style = MaterialTheme.typography.bodySmall)
+        Text("${s("lic_license_label")}${entry.license}", style = MaterialTheme.typography.bodySmall)
         Text(entry.url, style = MaterialTheme.typography.bodySmall)
         Text(entry.notice, style = MaterialTheme.typography.bodySmall)
     }

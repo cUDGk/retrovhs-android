@@ -6,17 +6,19 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -34,15 +36,21 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.cudgk.retrovhs.i18n.s
 import com.cudgk.retrovhs.rust.NtscRs
-import com.cudgk.retrovhs.settings.Engine
 import com.cudgk.retrovhs.settings.PresetRow
 import com.cudgk.retrovhs.settings.Settings
+import com.cudgk.retrovhs.settings.ShaderVariant
+import com.cudgk.retrovhs.settings.Tint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -56,14 +64,18 @@ fun GalleryScreen(onBack: () -> Unit) {
     var pickedUri by remember { mutableStateOf<Uri?>(null) }
     var pickedMime by remember { mutableStateOf<String?>(null) }
     var intensity by remember { mutableFloatStateOf(Settings.DEFAULT_INTENSITY) }
-    var engine by remember { mutableStateOf(Settings.DEFAULT_ENGINE) }
     var preset by remember { mutableStateOf<String?>(null) }
+    var tint by remember { mutableStateOf(Settings.DEFAULT_TINT) }
+    var variant by remember { mutableStateOf(Settings.DEFAULT_VARIANT) }
     var processing by remember { mutableStateOf(false) }
+    val savedLabel = s("gal_saved")
+    val failedLabel = s("gal_failed")
 
     LaunchedEffect(Unit) {
         intensity = Settings.intensity(context).first()
-        engine = Settings.engine(context).first()
         preset = Settings.preset(context).first()
+        tint = Settings.tint(context).first()
+        variant = Settings.variant(context).first()
     }
 
     val picker = rememberLauncherForActivityResult(
@@ -74,7 +86,6 @@ fun GalleryScreen(onBack: () -> Unit) {
     }
 
     val isVideo = pickedMime?.startsWith("video/") == true
-    val effectiveEngine = if (isVideo) Engine.SHADER else engine
 
     Column(
         modifier = Modifier
@@ -84,9 +95,9 @@ fun GalleryScreen(onBack: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = onBack) { Text("戻る") }
+            Button(onClick = onBack) { Text(s("gal_back")) }
             Spacer(Modifier.width(12.dp))
-            Text("ギャラリー", style = MaterialTheme.typography.titleLarge)
+            Text(s("gal_title"), style = MaterialTheme.typography.titleLarge)
         }
 
         Button(
@@ -98,33 +109,29 @@ fun GalleryScreen(onBack: () -> Unit) {
                 )
             },
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("画像/動画を選択") }
+        ) { Text(s("gal_pick")) }
 
         pickedUri?.let { uri ->
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .background(Color.Black),
-                contentAlignment = Alignment.Center,
-            ) {
-                AsyncImage(
-                    model = uri,
-                    contentDescription = null,
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize(),
+            if (isVideo) {
+                ZoomablePreview(uri = uri)
+            } else {
+                GalleryShaderPreview(
+                    uri = uri,
+                    intensity = intensity,
+                    tint = tint,
+                    variant = variant,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                 )
             }
-            Text("MIME: ${pickedMime ?: "?"}", style = MaterialTheme.typography.bodySmall)
+            Text("${pickedMime ?: "?"}  (${s("gal_pinch_hint")})", style = MaterialTheme.typography.bodySmall)
 
-            Text("プリセット", style = MaterialTheme.typography.titleSmall)
+            Text(s("gal_preset"), style = MaterialTheme.typography.titleSmall)
             PresetRow(
                 selected = preset,
                 enabled = !processing,
                 onSelect = { p ->
                     preset = p.name
                     intensity = p.intensity
-                    engine = p.engine
                     scope.launch { Settings.applyPreset(context, p) }
                 },
                 chipBg = MaterialTheme.colorScheme.surfaceVariant,
@@ -134,7 +141,7 @@ fun GalleryScreen(onBack: () -> Unit) {
             )
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("強度", modifier = Modifier.width(48.dp))
+                Text(s("gal_intensity"), modifier = Modifier.width(48.dp))
                 Slider(
                     value = intensity,
                     onValueChange = {
@@ -147,36 +154,25 @@ fun GalleryScreen(onBack: () -> Unit) {
                             Settings.setPreset(context, null)
                         }
                     },
-                    valueRange = 0f..1f,
+                    valueRange = 0f..Settings.MAX_INTENSITY,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text("エンジン", modifier = Modifier.width(64.dp))
-                listOf(Engine.SHADER to "シェーダ (高速)", Engine.RUST to "NTSC-rs (高画質)").forEach { (e, label) ->
-                    val isSel = effectiveEngine == e
-                    val rustUnavail = e == Engine.RUST && !NtscRs.isAvailable
-                    AssistChip(
-                        enabled = !processing && !isVideo && !rustUnavail,
-                        onClick = {
-                            engine = e
-                            scope.launch { Settings.setEngine(context, e) }
-                        },
-                        label = { Text(if (rustUnavail) "$label ✕" else label) },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                            labelColor = if (isSel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        ),
-                    )
-                }
-            }
             if (isVideo) {
                 Text(
-                    "動画はシェーダのみ対応",
+                    s("gal_video_only_shader"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (!NtscRs.isAvailable) {
+                Text(
+                    s("gal_rust_unavailable"),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else {
+                Text(
+                    s("gal_rust"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -198,14 +194,14 @@ fun GalleryScreen(onBack: () -> Unit) {
                                     source = uri,
                                     intensity = intensity,
                                     displayName = displayName,
-                                    useRust = effectiveEngine == Engine.RUST,
+                                    useRust = NtscRs.isAvailable,
                                 )
                             }
                         }
                         processing = false
                         Toast.makeText(
                             context,
-                            if (ok) "保存しました" else "処理に失敗",
+                            if (ok) savedLabel else failedLabel,
                             Toast.LENGTH_SHORT,
                         ).show()
                     }
@@ -220,5 +216,40 @@ fun GalleryScreen(onBack: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ColumnScope.ZoomablePreview(uri: Uri) {
+    var scale by remember(uri) { mutableFloatStateOf(1f) }
+    var offset by remember(uri) { mutableStateOf(Offset.Zero) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .weight(1f)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.Black)
+            .pointerInput(uri) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    scale = (scale * zoom).coerceIn(0.5f, 6f)
+                    offset += pan
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        AsyncImage(
+            model = uri,
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(
+                    scaleX = scale,
+                    scaleY = scale,
+                    translationX = offset.x,
+                    translationY = offset.y,
+                ),
+        )
     }
 }

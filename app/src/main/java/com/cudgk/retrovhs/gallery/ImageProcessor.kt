@@ -27,6 +27,58 @@ object ImageProcessor {
         return processWithShader(context, source, intensity, displayName)
     }
 
+    /**
+     * Apply the VHS shader to an in-memory bitmap (used by the camera photo path
+     * so the saved image matches the live preview look exactly).
+     */
+    fun processBitmapShader(
+        source: Bitmap,
+        intensity: Float,
+        tintColor: FloatArray,
+        tintSaturation: Float,
+        variantMul: FloatArray,
+    ): Bitmap? {
+        val w = source.width
+        val h = source.height
+        if (w <= 0 || h <= 0) return null
+        val gl = OffscreenGl(width = w, height = h, recordable = false)
+        val renderer = Sampler2DRenderer()
+        var output: Bitmap? = null
+        try {
+            renderer.init()
+            val texId = renderer.uploadBitmap(source)
+            GLES30.glViewport(0, 0, w, h)
+            // flipY=false: GL framebuffer ends up upside-down vs source, but glReadPixels
+            // (reads from bottom-left first) + Bitmap.copyPixelsFromBuffer (writes to top-left
+            // first) inverts again so the saved bitmap matches source orientation.
+            renderer.draw(
+                textureId = texId,
+                intensity = intensity,
+                timeSec = 0f,
+                width = w,
+                height = h,
+                flipY = false,
+                tintColor = tintColor,
+                tintSaturation = tintSaturation,
+                variantMul = variantMul,
+            )
+            val buf = java.nio.ByteBuffer.allocateDirect(w * h * 4).order(java.nio.ByteOrder.nativeOrder())
+            GLES30.glReadPixels(0, 0, w, h, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, buf)
+            buf.rewind()
+            output = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply {
+                copyPixelsFromBuffer(buf)
+            }
+            GLES30.glDeleteTextures(1, intArrayOf(texId), 0)
+        } catch (t: Throwable) {
+            output?.recycle()
+            output = null
+        } finally {
+            renderer.release()
+            gl.release()
+        }
+        return output
+    }
+
     private fun processWithRust(context: Context, source: Uri, intensity: Float, displayName: String): Boolean {
         if (!NtscRs.isAvailable) return false
         val src = decodeBitmap(context, source, mutable = true) ?: return false
@@ -56,7 +108,8 @@ object ImageProcessor {
 
             // Create FBO for capture (pbuffer is already current; we can render to default and read)
             GLES30.glViewport(0, 0, w, h)
-            renderer.draw(textureId = texId, intensity = intensity, timeSec = 0f, width = w, height = h, flipY = true)
+            // flipY=false so glReadPixels + copyPixelsFromBuffer round-trip preserves orientation.
+            renderer.draw(textureId = texId, intensity = intensity, timeSec = 0f, width = w, height = h, flipY = false)
             GlUtils.checkGlError("draw")
 
             val buf = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder())
@@ -70,7 +123,7 @@ object ImageProcessor {
             gl.release()
         }
 
-        val out = processed
+        val out = processed ?: return false
         return saveToMediaStore(context, out, displayName).also { out.recycle() }
     }
 
@@ -83,14 +136,12 @@ object ImageProcessor {
     }
 
     private fun bufferToBitmap(buf: ByteBuffer, w: Int, h: Int): Bitmap {
-        val pixels = IntArray(w * h)
-        for (i in 0 until w * h) {
-            val r = buf.get(i * 4).toInt() and 0xff
-            val g = buf.get(i * 4 + 1).toInt() and 0xff
-            val b = buf.get(i * 4 + 2).toInt() and 0xff
-            pixels[i] = (0xff shl 24) or (r shl 16) or (g shl 8) or b
-        }
-        return Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888)
+        // glReadPixels(GL_RGBA, GL_UNSIGNED_BYTE) gives bytes RGBA which matches
+        // Bitmap.Config.ARGB_8888 in-memory layout, so copyPixelsFromBuffer is direct.
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        buf.rewind()
+        bmp.copyPixelsFromBuffer(buf)
+        return bmp
     }
 
     private fun saveToMediaStore(context: Context, bitmap: Bitmap, displayName: String): Boolean {

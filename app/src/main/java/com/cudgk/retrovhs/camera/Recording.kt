@@ -52,7 +52,9 @@ class Recording(
     fun release() {
         if (stopped) return
         stopped = true
-        video.release()
-        muxerWrapper.release()
+        runCatching { audio?.stop() }
+        runCatching { video.drain(true) } // best-effort EOS so encoder.stop() doesn't block
+        runCatching { video.release() }
+        runCatching { muxerWrapper.release() }
     }
 }

@@ -66,6 +66,7 @@ class AudioEncoder(
     fun stop() {
         stopFlag = true
         thread?.join(2000)
+        if (thread?.isAlive == true) thread?.interrupt()
         runCatching { record.stop() }
         runCatching { record.release() }
         runCatching { codec.stop() }
@@ -79,19 +80,25 @@ class AudioEncoder(
             if (read > 0) feed(pcm, read, false)
             drain(false)
         }
-        feed(pcm, 0, true)
+        // Retry EOS feed in case input buffer is momentarily unavailable.
+        var eosTries = 0
+        while (!feed(pcm, 0, true) && eosTries < 10) {
+            eosTries++
+            Thread.sleep(5)
+        }
         drain(true)
     }
 
-    private fun feed(pcm: ByteArray, length: Int, endOfStream: Boolean) {
+    private fun feed(pcm: ByteArray, length: Int, endOfStream: Boolean): Boolean {
         val inputId = codec.dequeueInputBuffer(10_000)
-        if (inputId < 0) return
-        val inBuf = codec.getInputBuffer(inputId) ?: return
+        if (inputId < 0) return false
+        val inBuf = codec.getInputBuffer(inputId) ?: return false
         inBuf.clear()
         if (length > 0) inBuf.put(pcm, 0, length)
         val pts = System.nanoTime() / 1000 - startTimeUs
         val flags = if (endOfStream) MediaCodec.BUFFER_FLAG_END_OF_STREAM else 0
         codec.queueInputBuffer(inputId, 0, length, pts, flags)
+        return true
     }
 
     private fun drain(endOfStream: Boolean) {

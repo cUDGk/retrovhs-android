@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.cudgk.retrovhs.i18n.s
 import com.cudgk.retrovhs.rust.NtscRs
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -52,9 +53,9 @@ fun SettingsScreen(onBack: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row {
-            Button(onClick = onBack) { Text("戻る") }
+            Button(onClick = onBack) { Text(s("set_back")) }
             Spacer(Modifier.width(12.dp))
-            Text("設定 / プリセット", style = MaterialTheme.typography.titleLarge)
+            Text(s("set_title"), style = MaterialTheme.typography.titleLarge)
         }
 
         Card(
@@ -62,20 +63,20 @@ fun SettingsScreen(onBack: () -> Unit) {
             colors = CardDefaults.cardColors(),
         ) {
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("現在", style = MaterialTheme.typography.titleMedium)
-                Text("プリセット: ${preset ?: "未選択 (カスタム)"}")
-                Text("強度: ${"%.2f".format(intensity)}")
-                Text("エンジン: ${engineLabel(engine)}")
+                Text(s("set_current"), style = MaterialTheme.typography.titleMedium)
+                Text("${s("set_preset")}${preset ?: s("set_no_preset")}")
+                Text("${s("set_strength")}${"%.2f".format(intensity)}")
+                Text("${s("set_engine")}${engineLabel(engine)}")
                 if (engine == Engine.RUST && !NtscRs.isAvailable) {
                     Text(
-                        "⚠ NTSC-rs ネイティブライブラリ読み込み失敗: ${NtscRs.errorMessage ?: "不明"}",
+                        "⚠ NTSC-rs: ${NtscRs.errorMessage ?: "?"}",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }
         }
 
-        Text("プリセットを選択", style = MaterialTheme.typography.titleMedium)
+        Text(s("set_choose_preset"), style = MaterialTheme.typography.titleMedium)
         Presets.ALL.forEach { p ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -92,7 +93,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     Text(p.name, style = MaterialTheme.typography.titleSmall)
                     Text(p.description, style = MaterialTheme.typography.bodySmall)
                     Text(
-                        "強度 ${"%.2f".format(p.intensity)} / ${engineLabel(p.engine)}",
+                        "${s("set_intensity_label")} ${"%.2f".format(p.intensity)} / ${engineLabel(p.engine)}",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -114,11 +115,12 @@ fun SettingsScreen(onBack: () -> Unit) {
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("デフォルトに戻す") }
+        ) { Text(s("set_reset")) }
     }
 }
 
+@Composable
 private fun engineLabel(e: Engine): String = when (e) {
-    Engine.SHADER -> "シェーダ (高速)"
-    Engine.RUST -> "NTSC-rs (高画質)"
+    Engine.SHADER -> s("set_engine_shader")
+    Engine.RUST -> s("set_engine_rust")
 }

@@ -1,3 +1,5 @@
+use std::panic::{AssertUnwindSafe, catch_unwind};
+
 use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass};
 use jni::sys::{jfloat, jint};
@@ -10,7 +12,7 @@ use ntsc_rs::yiq_fielding::Rgbx;
 /// JNI signature: (II[BIF)V
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_cudgk_retrovhs_rust_NtscRs_processRgba<'local>(
-    env: JNIEnv<'local>,
+    mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     width: jint,
     height: jint,
@@ -18,6 +20,31 @@ pub extern "system" fn Java_com_cudgk_retrovhs_rust_NtscRs_processRgba<'local>(
     frame_num: jint,
     intensity: jfloat,
 ) {
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        process(&mut env, width, height, &rgba, frame_num, intensity)
+    }));
+    if env.exception_check().unwrap_or(false) {
+        return; // a Java exception is already pending — let it propagate
+    }
+    match result {
+        Ok(Ok(())) => {}
+        Ok(Err(msg)) => {
+            let _ = env.throw_new("java/lang/RuntimeException", msg);
+        }
+        Err(_) => {
+            let _ = env.throw_new("java/lang/RuntimeException", "ntsc-rs JNI panicked");
+        }
+    }
+}
+
+fn process(
+    env: &mut JNIEnv,
+    width: jint,
+    height: jint,
+    rgba: &JByteArray,
+    frame_num: jint,
+    intensity: jfloat,
+) -> Result<(), &'static str> {
     let w = width as usize;
     let h = height as usize;
     let len = w * h * 4;
@@ -25,37 +52,32 @@ pub extern "system" fn Java_com_cudgk_retrovhs_rust_NtscRs_processRgba<'local>(
     let strength = intensity.clamp(0.0, 1.0);
 
     if strength <= 0.0 {
-        return;
+        return Ok(());
     }
 
-    // Copy in (Java byte = i8; reinterpret as u8 for ntsc-rs)
     let mut buf: Vec<u8> = vec![0; len];
     {
         let dst = unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr() as *mut i8, len) };
-        if env.get_byte_array_region(&rgba, 0, dst).is_err() {
-            return;
-        }
+        env.get_byte_array_region(rgba, 0, dst)
+            .map_err(|_| "get_byte_array_region failed")?;
     }
 
-    // Keep a copy for blending if intensity < 1.
     let original = if strength < 1.0 { Some(buf.clone()) } else { None };
 
     let effect = NtscEffect::default();
-    effect.apply_effect_to_buffer::<Rgbx, u8>(
-        (w, h),
-        &mut buf,
-        frame,
-        [1.0, 1.0],
-    );
+    effect.apply_effect_to_buffer::<Rgbx, u8>((w, h), &mut buf, frame, [1.0, 1.0]);
 
     if let Some(orig) = original {
         let s = strength;
         let inv = 1.0 - s;
         for i in 0..len {
-            buf[i] = (orig[i] as f32 * inv + buf[i] as f32 * s).round().clamp(0.0, 255.0) as u8;
+            buf[i] = (orig[i] as f32 * inv + buf[i] as f32 * s)
+                .round()
+                .clamp(0.0, 255.0) as u8;
         }
     }
 
     let src = unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const i8, len) };
-    let _ = env.set_byte_array_region(&rgba, 0, src);
+    env.set_byte_array_region(rgba, 0, src)
+        .map_err(|_| "set_byte_array_region failed")
 }

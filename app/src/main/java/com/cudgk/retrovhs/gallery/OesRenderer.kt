@@ -18,6 +18,14 @@ class OesRenderer {
     private var uIntensity: Int = 0
     private var uTime: Int = 0
     private var uResolution: Int = 0
+    private var uTintColor: Int = 0
+    private var uTintSaturation: Int = 0
+    private var uChromaAbMul: Int = 0
+    private var uScanlineMul: Int = 0
+    private var uGrainMul: Int = 0
+    private var uVignetteMul: Int = 0
+    private var uJitterMul: Int = 0
+    private var uChromaBlurMul: Int = 0
 
     private val quad: FloatBuffer = run {
         val data = floatArrayOf(
@@ -41,6 +49,14 @@ class OesRenderer {
         uIntensity = GLES30.glGetUniformLocation(program, "uIntensity")
         uTime = GLES30.glGetUniformLocation(program, "uTime")
         uResolution = GLES30.glGetUniformLocation(program, "uResolution")
+        uTintColor = GLES30.glGetUniformLocation(program, "uTintColor")
+        uTintSaturation = GLES30.glGetUniformLocation(program, "uTintSaturation")
+        uChromaAbMul = GLES30.glGetUniformLocation(program, "uChromaAbMul")
+        uScanlineMul = GLES30.glGetUniformLocation(program, "uScanlineMul")
+        uGrainMul = GLES30.glGetUniformLocation(program, "uGrainMul")
+        uVignetteMul = GLES30.glGetUniformLocation(program, "uVignetteMul")
+        uJitterMul = GLES30.glGetUniformLocation(program, "uJitterMul")
+        uChromaBlurMul = GLES30.glGetUniformLocation(program, "uChromaBlurMul")
     }
 
     fun release() {
@@ -66,6 +82,9 @@ class OesRenderer {
         timeSec: Float,
         width: Int,
         height: Int,
+        tintColor: FloatArray = floatArrayOf(1f, 1f, 1f),
+        tintSaturation: Float = 1f,
+        variantMul: FloatArray = floatArrayOf(1f, 1f, 1f, 1f, 1f, 1f),
     ) {
         GLES30.glClearColor(0f, 0f, 0f, 1f)
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
@@ -78,6 +97,14 @@ class OesRenderer {
         GLES30.glUniform1f(uIntensity, intensity)
         GLES30.glUniform1f(uTime, timeSec)
         GLES30.glUniform2f(uResolution, width.toFloat(), height.toFloat())
+        GLES30.glUniform3f(uTintColor, tintColor[0], tintColor[1], tintColor[2])
+        GLES30.glUniform1f(uTintSaturation, tintSaturation)
+        GLES30.glUniform1f(uChromaAbMul, variantMul[0])
+        GLES30.glUniform1f(uScanlineMul, variantMul[1])
+        GLES30.glUniform1f(uGrainMul, variantMul[2])
+        GLES30.glUniform1f(uVignetteMul, variantMul[3])
+        GLES30.glUniform1f(uJitterMul, variantMul[4])
+        GLES30.glUniform1f(uChromaBlurMul, variantMul[5])
 
         quad.position(0)
         GLES30.glVertexAttribPointer(aPosition, 2, GLES30.GL_FLOAT, false, 16, quad)

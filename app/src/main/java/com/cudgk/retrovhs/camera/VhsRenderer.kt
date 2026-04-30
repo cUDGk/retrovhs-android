@@ -11,7 +11,9 @@ import android.opengl.EGLSurface
 import android.opengl.GLES11Ext
 import android.opengl.GLES30
 import android.opengl.GLSurfaceView
+import android.opengl.Matrix
 import android.os.SystemClock
+import android.util.Log
 import android.view.Surface
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -20,12 +22,37 @@ import java.util.concurrent.atomic.AtomicReference
 import javax.microedition.khronos.opengles.GL10
 
 class VhsRenderer(
+    context: android.content.Context,
     private val onSurfaceTextureReady: (SurfaceTexture, Surface) -> Unit,
     private val onPhotoCaptured: (Bitmap) -> Unit,
 ) : GLSurfaceView.Renderer {
 
     @Volatile var intensity: Float = 0.7f
+    @Volatile var tintColor: FloatArray = floatArrayOf(1f, 1f, 1f)
+    @Volatile var tintSaturation: Float = 1f
+    @Volatile var dateStampEnabled: Boolean = false
+    @Volatile var stampIsLeft: Boolean = false
+    @Volatile var stampIsTop: Boolean = false
+    @Volatile var stampRotation: Int = 0
+    @Volatile var variantMul: FloatArray = floatArrayOf(1f, 1f, 1f, 1f, 1f, 1f) // ca, scan, grain, vig, jit, chroma
+    @Volatile var sourceWidth: Int = 1280
+    @Volatile var sourceHeight: Int = 720
+
+    /**
+     * Set both the shader-side source resolution AND the SurfaceTexture's default
+     * buffer size. The latter is critical: without it the texture buffer ends up at
+     * some OS default (often the screen size) and CameraX-supplied frames get
+     * stretched into it, which destroys preview quality.
+     */
+    fun setSourceBufferSize(w: Int, h: Int) {
+        sourceWidth = w
+        sourceHeight = h
+        surfaceTexture?.setDefaultBufferSize(w, h)
+    }
     @Volatile private var pendingPhoto: Boolean = false
+
+    private val dateStamp: DateStamp = DateStamp(context)
+    private val stampRenderer = DateStampRenderer()
 
     private var program: Int = 0
     private var aPosition: Int = 0
@@ -35,14 +62,24 @@ class VhsRenderer(
     private var uIntensity: Int = 0
     private var uTime: Int = 0
     private var uResolution: Int = 0
+    private var uTintColor: Int = 0
+    private var uTintSaturation: Int = 0
+    private var uChromaAbMul: Int = 0
+    private var uScanlineMul: Int = 0
+    private var uGrainMul: Int = 0
+    private var uVignetteMul: Int = 0
+    private var uJitterMul: Int = 0
+    private var uChromaBlurMul: Int = 0
 
     private var oesTexId: Int = 0
     private var surfaceTexture: SurfaceTexture? = null
-    private val texMatrix = FloatArray(16)
+    private val texMatrix = FloatArray(16).also { Matrix.setIdentityM(it, 0) }
 
     private val viewportSize = IntArray(2)
     private val startMs = SystemClock.uptimeMillis()
     private val frameAvailable = AtomicReference(false)
+    private var firstFrameLogged = false
+    private var frameUpdateCount = 0
 
     // Recording state
     private val pendingStartRecording = AtomicReference<Recording?>(null)
@@ -82,10 +119,14 @@ class VhsRenderer(
             GLES30.glDeleteProgram(program)
             program = 0
         }
+        dateStamp.release()
+        stampRenderer.release()
     }
 
     override fun onSurfaceCreated(gl: GL10?, config: javax.microedition.khronos.egl.EGLConfig?) {
         program = GlUtils.buildProgram(VhsShader.VERTEX, VhsShader.FRAGMENT)
+        dateStamp.init()
+        stampRenderer.init()
         aPosition = GLES30.glGetAttribLocation(program, "aPosition")
         aTexCoord = GLES30.glGetAttribLocation(program, "aTexCoord")
         uTexture = GLES30.glGetUniformLocation(program, "uTexture")
@@ -93,6 +134,20 @@ class VhsRenderer(
         uIntensity = GLES30.glGetUniformLocation(program, "uIntensity")
         uTime = GLES30.glGetUniformLocation(program, "uTime")
         uResolution = GLES30.glGetUniformLocation(program, "uResolution")
+        uTintColor = GLES30.glGetUniformLocation(program, "uTintColor")
+        uTintSaturation = GLES30.glGetUniformLocation(program, "uTintSaturation")
+        uChromaAbMul = GLES30.glGetUniformLocation(program, "uChromaAbMul")
+        uScanlineMul = GLES30.glGetUniformLocation(program, "uScanlineMul")
+        uGrainMul = GLES30.glGetUniformLocation(program, "uGrainMul")
+        uVignetteMul = GLES30.glGetUniformLocation(program, "uVignetteMul")
+        uJitterMul = GLES30.glGetUniformLocation(program, "uJitterMul")
+        uChromaBlurMul = GLES30.glGetUniformLocation(program, "uChromaBlurMul")
+        Log.d(
+            "VhsRenderer",
+            "locations: uTexture=$uTexture uTexMatrix=$uTexMatrix uIntensity=$uIntensity " +
+                "uTime=$uTime uResolution=$uResolution uTintColor=$uTintColor uTintSaturation=$uTintSaturation " +
+                "aPos=$aPosition aTex=$aTexCoord program=$program",
+        )
 
         val tex = IntArray(1)
         GLES30.glGenTextures(1, tex, 0)
@@ -113,14 +168,20 @@ class VhsRenderer(
         viewportSize[0] = width
         viewportSize[1] = height
         GLES30.glViewport(0, 0, width, height)
+        Log.d("VhsRenderer", "onSurfaceChanged: ${width}x${height}")
     }
 
     override fun onDrawFrame(gl: GL10?) {
         val st = surfaceTexture ?: return
         if (frameAvailable.compareAndSet(true, false)) {
             st.updateTexImage()
+            st.getTransformMatrix(texMatrix)
+            frameUpdateCount++
+            if (!firstFrameLogged) {
+                firstFrameLogged = true
+                Log.d("VhsRenderer", "FIRST camera frame received! viewport=${viewportSize[0]}x${viewportSize[1]}")
+            }
         }
-        st.getTransformMatrix(texMatrix)
 
         // Draw to display surface
         GLES30.glViewport(0, 0, viewportSize[0], viewportSize[1])
@@ -216,7 +277,19 @@ class VhsRenderer(
         GLES30.glUniformMatrix4fv(uTexMatrix, 1, false, texMatrix, 0)
         GLES30.glUniform1f(uIntensity, intensity)
         GLES30.glUniform1f(uTime, (SystemClock.uptimeMillis() - startMs) / 1000f)
-        GLES30.glUniform2f(uResolution, w.toFloat(), h.toFloat())
+        // uResolution must reflect the *source* texture size for correct texel-stepped chroma blur,
+        // not the destination viewport size.
+        GLES30.glUniform2f(uResolution, sourceWidth.toFloat(), sourceHeight.toFloat())
+        val tc = tintColor
+        GLES30.glUniform3f(uTintColor, tc[0], tc[1], tc[2])
+        GLES30.glUniform1f(uTintSaturation, tintSaturation)
+        val v = variantMul
+        GLES30.glUniform1f(uChromaAbMul, v[0])
+        GLES30.glUniform1f(uScanlineMul, v[1])
+        GLES30.glUniform1f(uGrainMul, v[2])
+        GLES30.glUniform1f(uVignetteMul, v[3])
+        GLES30.glUniform1f(uJitterMul, v[4])
+        GLES30.glUniform1f(uChromaBlurMul, v[5])
 
         quadVertices.position(0)
         GLES30.glVertexAttribPointer(aPosition, 2, GLES30.GL_FLOAT, false, 16, quadVertices)
@@ -229,6 +302,21 @@ class VhsRenderer(
 
         GLES30.glDisableVertexAttribArray(aPosition)
         GLES30.glDisableVertexAttribArray(aTexCoord)
+
+        if (dateStampEnabled) {
+            dateStamp.ensureCurrent(System.currentTimeMillis(), stampRotation)
+            if (dateStamp.widthPx > 0 && dateStamp.heightPx > 0 && w > 0 && h > 0) {
+                val stampW = (dateStamp.widthPx.toFloat() / w.toFloat()).coerceAtMost(0.95f)
+                val stampH = (dateStamp.heightPx.toFloat() / h.toFloat()).coerceAtMost(0.2f)
+                val ndcW = stampW * 2f
+                val ndcH = stampH * 2f
+                val marginX = 0.04f
+                val marginY = 0.04f
+                val ndcX = if (stampIsLeft) -1f + marginX else 1f - ndcW - marginX
+                val ndcY = if (stampIsTop) 1f - ndcH - marginY else -1f + marginY
+                stampRenderer.draw(dateStamp.textureId, ndcX, ndcY, ndcW, ndcH)
+            }
+        }
     }
 
     private fun captureFrame() {
@@ -238,20 +326,12 @@ class VhsRenderer(
         val buf = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder())
         GLES30.glReadPixels(0, 0, w, h, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, buf)
         buf.rewind()
-        val pixels = IntArray(w * h)
-        val row = IntArray(w)
-        for (y in 0 until h) {
-            val srcOffset = y * w * 4
-            for (x in 0 until w) {
-                val i = srcOffset + x * 4
-                val r = buf.get(i).toInt() and 0xff
-                val g = buf.get(i + 1).toInt() and 0xff
-                val b = buf.get(i + 2).toInt() and 0xff
-                row[x] = (0xff shl 24) or (r shl 16) or (g shl 8) or b
-            }
-            System.arraycopy(row, 0, pixels, (h - 1 - y) * w, w)
-        }
-        val bmp = Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888)
-        onPhotoCaptured(bmp)
+        val raw = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        raw.copyPixelsFromBuffer(buf)
+        // Flip vertically: GL origin is bottom-left.
+        val matrix = android.graphics.Matrix().apply { postScale(1f, -1f) }
+        val flipped = Bitmap.createBitmap(raw, 0, 0, w, h, matrix, false)
+        if (flipped !== raw) raw.recycle()
+        onPhotoCaptured(flipped)
     }
 }

@@ -1,0 +1,12 @@
+[package]
+name = "icon-tool"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ntsc-rs = { git = "https://github.com/ntsc-rs/ntsc-rs.git", branch = "main" }
+image = "0.25"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
