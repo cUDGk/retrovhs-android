@@ -64,7 +64,7 @@ flowchart LR
 | Android Studio | Hedgehog 以降 |
 | JDK | 17 以上 |
 | Android SDK | 34, NDK 27 系 |
-| Rust | 1.85 以上 (edition 2024 対応) |
+| Rust | 1.85 以上 (edition 2021) |
 | cargo-ndk | `cargo install cargo-ndk` |
 
 Rust ターゲットの追加:
